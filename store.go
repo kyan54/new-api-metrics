@@ -160,7 +160,7 @@ func parseFilter(v url.Values, loc *time.Location) (Filter, error) {
 	if f.Dimension == "" {
 		f.Dimension = "channel"
 	}
-	if f.Dimension != "channel" && f.Dimension != "key" && f.Dimension != "user" {
+	if f.Dimension != "channel" && f.Dimension != "key" && f.Dimension != "user" && f.Dimension != "model" {
 		return f, fmt.Errorf("无效的统计维度")
 	}
 	for k, p := range map[string]*int64{"channel": &f.Channel, "user": &f.User, "key": &f.Key} {
@@ -261,6 +261,10 @@ func (s *Store) report(ctx context.Context, f Filter, loc *time.Location, quota 
 	userName := "''"
 	group := id
 	switch f.Dimension {
+	case "model":
+		id = "0"
+		group = "COALESCE(l.model_name,'')"
+		name = "COALESCE(NULLIF(l.model_name,''),'未记录模型')"
 	case "user":
 		id = "COALESCE(l.user_id,0)"
 		group = id

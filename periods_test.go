@@ -76,7 +76,7 @@ func TestSubscriptionScopes(t *testing.T) {
 	insert(t, db, "2026-02-28T00:00:00Z", 2, 2, 2, 1, 20, 2, 0)   // belongs to January
 	insert(t, db, "2026-01-05T00:00:00Z", 2, 1, 1, 9, 30, 3, 0)   // ordinary channel calendar
 	insert(t, db, "2026-02-05T00:00:00Z", 2, 1, 1, 9, 2000, 0, 0) // excluded ordinary Feb
-	for _, dim := range []string{"channel", "key", "user"} {
+	for _, dim := range []string{"channel", "key", "user", "model"} {
 		f := Filter{Month: "2026-01", Dimension: dim}
 		if err := a.applyPeriods(&f); err != nil {
 			t.Fatal(err)

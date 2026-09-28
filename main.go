@@ -197,7 +197,7 @@ func (a *App) data(w http.ResponseWriter, r *http.Request) {
 		out := csv.NewWriter(w)
 		out.Write([]string{"模式", "归属月份", "范围开始", "范围结束", "渠道周期说明", "时区", "维度", "ID", "名称", "用户ID", "用户", "请求数", "输入Token", "输出Token", "总Token", "消费额度", "折算费用", "费用单位", "零Token记录数"})
 		for _, x := range v.Rows {
-			out.Write([]string{v.Mode, v.Month, v.Start, v.End, periodDescription(v), v.Timezone, v.Dimension, strconv.FormatInt(x.ID, 10), safeCell(x.Name), strconv.FormatInt(x.UserID, 10), safeCell(x.User), strconv.FormatInt(x.Requests, 10), strconv.FormatInt(x.Input, 10), strconv.FormatInt(x.Output, 10), strconv.FormatInt(x.Total, 10), strconv.FormatInt(x.Quota, 10), strconv.FormatFloat(float64(x.Quota)/v.QuotaPerUnit, 'f', 6, 64), safeCell(v.Currency), strconv.FormatInt(x.ZeroUsage, 10)})
+			out.Write([]string{v.Mode, v.Month, v.Start, v.End, periodDescription(v), v.Timezone, v.Dimension, exportID(v.Dimension, x.ID), safeCell(x.Name), strconv.FormatInt(x.UserID, 10), safeCell(x.User), strconv.FormatInt(x.Requests, 10), strconv.FormatInt(x.Input, 10), strconv.FormatInt(x.Output, 10), strconv.FormatInt(x.Total, 10), strconv.FormatInt(x.Quota, 10), strconv.FormatFloat(float64(x.Quota)/v.QuotaPerUnit, 'f', 6, 64), safeCell(v.Currency), strconv.FormatInt(x.ZeroUsage, 10)})
 		}
 		out.Flush()
 		return
@@ -274,4 +274,11 @@ func periodDescription(r Report) string {
 		parts = append(parts, fmt.Sprintf("渠道#%d: 该月份缺少周期，未计入", id))
 	}
 	return strings.Join(parts, "; ")
+}
+
+func exportID(dimension string, id int64) string {
+	if dimension == "model" {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
 }

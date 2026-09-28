@@ -222,3 +222,39 @@ func TestLoginRateLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestModelAggregation(t *testing.T) {
+	s, db, _ := fixture(t, false)
+	insert(t, db, "2026-09-01T00:00:00Z", 2, 1, 1, 1, 100, 20, 40)
+	insert(t, db, "2026-09-02T00:00:00Z", 2, 2, 2, 9, 200, 30, 60)
+	insert(t, db, "2026-09-03T00:00:00Z", 2, 1, 1, 1, 300, 40, 80)
+	db.Exec("UPDATE logs SET model_name='glm-5.3' WHERE id=3")
+	f, err := parseFilter(mustQuery("dimension=model&month=2026-09"), time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.report(context.Background(), f, time.UTC, 500000, "USD")
+	if err != nil || len(r.Rows) != 2 || r.Summary.Total != 690 || r.Summary.Quota != 180 {
+		t.Fatal(r, err)
+	}
+	names := map[string]Row{}
+	for _, x := range r.Rows {
+		names[x.Name] = x
+	}
+	if names["ark-code-latest"].Total != 350 || names["ark-code-latest"].Requests != 2 || names["glm-5.3"].Quota != 80 {
+		t.Fatal(names)
+	}
+	f.Channel = 1
+	r, err = s.report(context.Background(), f, time.UTC, 500000, "USD")
+	if err != nil || r.Summary.Total != 460 {
+		t.Fatal(r, err)
+	}
+	f.Model = "glm-5.3"
+	r, err = s.report(context.Background(), f, time.UTC, 500000, "USD")
+	if err != nil || len(r.Rows) != 1 || r.Summary.Total != 340 {
+		t.Fatal(r, err)
+	}
+	if exportID("model", 0) != "" || exportID("user", 1) != "1" {
+		t.Fatal("CSV IDs")
+	}
+}
