@@ -1,0 +1,6 @@
+.git
+.env
+*.db*
+*.sqlite*
+new-api-metrics
+coverage.out

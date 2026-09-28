@@ -1,0 +1,7 @@
+.env
+*.db
+*.db-*
+*.sqlite*
+new-api-metrics
+coverage.out
+.DS_Store

@@ -1,0 +1,33 @@
+services:
+  metrics:
+    build: .
+    image: new-api-metrics:local
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-127.0.0.1}:8090:8090"
+    environment:
+      NEW_API_DB: /source/one-api.db
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Taipei}
+      QUOTA_PER_UNIT: ${QUOTA_PER_UNIT:-500000}
+      QUOTA_CURRENCY: ${QUOTA_CURRENCY:-USD}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - type: bind
+        source: ${NEW_API_DATA_DIR:-/data/DockerCompose/oneapi/data}
+        target: /source
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
