@@ -8,8 +8,15 @@
 <div id="dashboard" hidden>
  <header><div><strong>New API <span class="accent">Metrics</span></strong><small>独立用量统计台</small></div><button id="logout" class="quiet">退出登录</button></header>
  <main>
- <div class="heading"><div><p class="eyebrow">USAGE OVERVIEW</p><h1>月度用量</h1><p class="muted" id="period">按自然月查看每一份消耗</p></div><button id="export" class="quiet">↓ 导出 CSV</button></div>
- <form id="filters" class="filters"><label>统计月份<input id="month" type="month" required></label><label>渠道<select id="channel"><option value="">全部渠道</option></select></label><label>用户<select id="user"><option value="">全部用户</option></select></label><label>API Key<select id="key"><option value="">全部 Key</option></select></label><label>模型<select id="model"><option value="">全部模型</option></select></label><button type="submit">查询</button></form>
+ <div class="heading"><div><p class="eyebrow">USAGE OVERVIEW</p><h1>用量统计</h1><p class="muted" id="period">按统计月份或日期范围查看消耗</p></div><button id="export" class="quiet">↓ 导出 CSV</button></div>
+ <form id="filters" class="filters"><label>时间条件<select id="mode"><option value="month">统计月份</option><option value="range">日期范围</option></select></label><label id="month-field">统计月份<input id="month" type="month" required></label><label id="start-field" hidden>开始日期<input id="start" type="date"></label><label id="end-field" hidden>结束日期（含当天）<input id="end" type="date"></label><label>渠道<select id="channel"><option value="">全部渠道</option></select></label><label>用户<select id="user"><option value="">全部用户</option></select></label><label>API Key<select id="key"><option value="">全部 Key</option></select></label><label>模型<select id="model"><option value="">全部模型</option></select></label><button type="submit">查询</button></form>
+ <p id="range-preview" class="muted"></p>
+ <details class="panel settings"><summary>渠道订阅周期配置</summary>
+ <p class="muted">每个渠道逐月保存实际起止日期，归属月份取开始日期所在月。结束日期含当天；同一渠道的周期不可重叠。未配置任何周期的渠道按自然月统计。</p>
+ <form id="period-form" class="period-form"><label>配置渠道<select id="period-channel" required></select></label><label>周期开始<input id="period-start" type="date" required></label><label>周期结束（含当天）<input id="period-end" type="date" required></label><button type="submit">保存周期</button></form>
+ <p id="period-month" class="muted"></p><p id="settings-error" role="alert"></p>
+ <div class="table-scroll"><table><thead><tr><th>渠道</th><th>归属月份</th><th>开始日期</th><th>结束日期</th><th>操作</th></tr></thead><tbody id="period-rows"></tbody></table></div>
+ <p class="muted">修改历史周期会立即改变对应月份的统计。删除某渠道的最后一个周期后，该渠道恢复按自然月统计。配置仅保存在本统计服务，不修改 New API。</p></details>
  <p id="error" role="alert"></p>
  <section class="cards"><article><p>总 Token</p><strong id="total">—</strong><small>输入 + 输出</small></article><article><p>输入 Token</p><strong id="input">—</strong><small>按 New API 日志记录</small></article><article><p>输出 Token</p><strong id="output">—</strong><small>按 New API 日志记录</small></article><article><p>请求数</p><strong id="requests">—</strong><small>消费记录</small></article><article><p>折算费用 <span id="currency"></span></p><strong id="cost">—</strong><small>非套餐实际账单</small></article></section>
  <section class="panel"><div class="panel-head"><h2>每日 Token 趋势</h2><span class="muted">总 Token</span></div><div id="chart" aria-label="每日 Token 柱状图"></div><p class="muted chart-hint">鼠标悬停或聚焦柱子查看每日精确用量</p></section>

@@ -7,6 +7,7 @@ services:
       - "${BIND_IP:-127.0.0.1}:8090:8090"
     environment:
       NEW_API_DB: /source/one-api.db
+      PERIODS_FILE: /state/periods.json
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Taipei}
@@ -18,6 +19,11 @@ services:
         source: ${NEW_API_DATA_DIR:-/data/DockerCompose/oneapi/data}
         target: /source
         read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${METRICS_STATE_DIR:-./state}
+        target: /state
         bind:
           create_host_path: false
     read_only: true

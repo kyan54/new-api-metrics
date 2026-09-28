@@ -77,6 +77,7 @@ type App struct {
 	mu       sync.Mutex
 	attempts map[string]attempt
 	queries  chan struct{}
+	periods  *PeriodStore
 }
 
 func newApp(s *Store, c Config) *App {
@@ -84,7 +85,7 @@ func newApp(s *Store, c Config) *App {
 	if _, err := rand.Read(key); err != nil {
 		panic(err)
 	}
-	return &App{s, c, key, sync.Mutex{}, map[string]attempt{}, make(chan struct{}, 1)}
+	return &App{store: s, cfg: c, secret: key, attempts: map[string]attempt{}, queries: make(chan struct{}, 1)}
 }
 func (a *App) token(exp string) string {
 	m := hmac.New(sha256.New, a.secret)
@@ -179,6 +180,10 @@ func (a *App) data(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
+	if err = a.applyPeriods(&f); err != nil {
+		jsonOut(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
 	v, err := a.store.report(ctx, f, a.cfg.Loc, a.cfg.Quota, a.cfg.Currency)
 	if err != nil {
 		log.Printf("report: %v", err)
@@ -187,12 +192,12 @@ func (a *App) data(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/api/export" {
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=metrics-%s-%s.csv", f.Month, f.Dimension))
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=metrics-%s-%s.csv", v.Start+"_"+v.End, f.Dimension))
 		w.Write([]byte("\xef\xbb\xbf"))
 		out := csv.NewWriter(w)
-		out.Write([]string{"月份", "时区", "维度", "ID", "名称", "用户ID", "用户", "请求数", "输入Token", "输出Token", "总Token", "消费额度", "折算费用", "费用单位", "零Token记录数"})
+		out.Write([]string{"模式", "归属月份", "范围开始", "范围结束", "渠道周期说明", "时区", "维度", "ID", "名称", "用户ID", "用户", "请求数", "输入Token", "输出Token", "总Token", "消费额度", "折算费用", "费用单位", "零Token记录数"})
 		for _, x := range v.Rows {
-			out.Write([]string{v.Month, v.Timezone, v.Dimension, strconv.FormatInt(x.ID, 10), safeCell(x.Name), strconv.FormatInt(x.UserID, 10), safeCell(x.User), strconv.FormatInt(x.Requests, 10), strconv.FormatInt(x.Input, 10), strconv.FormatInt(x.Output, 10), strconv.FormatInt(x.Total, 10), strconv.FormatInt(x.Quota, 10), strconv.FormatFloat(float64(x.Quota)/v.QuotaPerUnit, 'f', 6, 64), safeCell(v.Currency), strconv.FormatInt(x.ZeroUsage, 10)})
+			out.Write([]string{v.Mode, v.Month, v.Start, v.End, periodDescription(v), v.Timezone, v.Dimension, strconv.FormatInt(x.ID, 10), safeCell(x.Name), strconv.FormatInt(x.UserID, 10), safeCell(x.User), strconv.FormatInt(x.Requests, 10), strconv.FormatInt(x.Input, 10), strconv.FormatInt(x.Output, 10), strconv.FormatInt(x.Total, 10), strconv.FormatInt(x.Quota, 10), strconv.FormatFloat(float64(x.Quota)/v.QuotaPerUnit, 'f', 6, 64), safeCell(v.Currency), strconv.FormatInt(x.ZeroUsage, 10)})
 		}
 		out.Flush()
 		return
@@ -203,6 +208,8 @@ func (a *App) handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { jsonOut(w, 200, map[string]string{"status": "ok"}) })
 	m.HandleFunc("POST /api/login", a.login)
+	m.HandleFunc("GET /api/periods", a.periodsAPI)
+	m.HandleFunc("POST /api/periods", a.periodsAPI)
 	m.HandleFunc("POST /api/logout", func(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "metrics_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: a.cfg.Secure, SameSite: http.SameSiteStrictMode})
 		jsonOut(w, 200, map[string]bool{"ok": true})
@@ -236,6 +243,10 @@ func main() {
 	}
 	defer s.db.Close()
 	a := newApp(s, c)
+	a.periods, err = openPeriods(env("PERIODS_FILE", "state/periods.json"), c.Loc)
+	if err != nil {
+		log.Fatal(err)
+	}
 	srv := &http.Server{Addr: c.Addr, Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
@@ -249,4 +260,18 @@ func main() {
 	if err = srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func periodDescription(r Report) string {
+	if r.Mode == "range" {
+		return "统一自定义日期范围"
+	}
+	parts := []string{"未配置订阅的渠道按自然月"}
+	for _, p := range r.Periods {
+		parts = append(parts, fmt.Sprintf("渠道#%d: %s 至 %s", p.ChannelID, p.Start, p.End))
+	}
+	for _, id := range r.Missing {
+		parts = append(parts, fmt.Sprintf("渠道#%d: 该月份缺少周期，未计入", id))
+	}
+	return strings.Join(parts, "; ")
 }

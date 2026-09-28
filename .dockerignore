@@ -4,3 +4,5 @@
 *.sqlite*
 new-api-metrics
 coverage.out
+
+state/

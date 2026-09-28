@@ -18,10 +18,13 @@ type Store struct {
 	channel string
 }
 type Filter struct {
-	Month              string
-	Dimension          string
-	Channel, User, Key int64
-	Model              string
+	Mode, Start, End    string
+	Periods             []Period
+	Configured, Missing []int64
+	Month               string
+	Dimension           string
+	Channel, User, Key  int64
+	Model               string
 }
 type Row struct {
 	ID        int64  `json:"id"`
@@ -43,15 +46,20 @@ type Day struct {
 	Total    int64  `json:"total_tokens"`
 }
 type Report struct {
-	Month        string  `json:"month"`
-	Timezone     string  `json:"timezone"`
-	Dimension    string  `json:"dimension"`
-	Rows         []Row   `json:"rows"`
-	Days         []Day   `json:"days"`
-	Summary      Row     `json:"summary"`
-	QuotaPerUnit float64 `json:"quota_per_unit"`
-	Currency     string  `json:"currency"`
-	Generated    string  `json:"generated_at"`
+	Mode         string   `json:"mode"`
+	Start        string   `json:"start"`
+	End          string   `json:"end"`
+	Periods      []Period `json:"periods"`
+	Missing      []int64  `json:"missing_period_channels"`
+	Month        string   `json:"month"`
+	Timezone     string   `json:"timezone"`
+	Dimension    string   `json:"dimension"`
+	Rows         []Row    `json:"rows"`
+	Days         []Day    `json:"days"`
+	Summary      Row      `json:"summary"`
+	QuotaPerUnit float64  `json:"quota_per_unit"`
+	Currency     string   `json:"currency"`
+	Generated    string   `json:"generated_at"`
 }
 type Option struct {
 	ID   int64  `json:"id"`
@@ -139,7 +147,13 @@ func monthBounds(month string, loc *time.Location) (time.Time, time.Time, error)
 	return start, start.AddDate(0, 1, 0), nil
 }
 func parseFilter(v url.Values, loc *time.Location) (Filter, error) {
-	f := Filter{Month: v.Get("month"), Dimension: v.Get("dimension"), Model: v.Get("model")}
+	f := Filter{Mode: v.Get("mode"), Start: v.Get("start"), End: v.Get("end"), Month: v.Get("month"), Dimension: v.Get("dimension"), Model: v.Get("model")}
+	if f.Mode == "" {
+		f.Mode = "month"
+	}
+	if f.Mode != "month" && f.Mode != "range" {
+		return f, fmt.Errorf("无效的时间模式")
+	}
 	if f.Month == "" {
 		f.Month = time.Now().In(loc).Format("2006-01")
 	}
@@ -161,6 +175,11 @@ func parseFilter(v url.Values, loc *time.Location) (Filter, error) {
 	if len(f.Model) > 256 {
 		return f, fmt.Errorf("模型名称过长")
 	}
+	if f.Mode == "range" {
+		_, _, err := dateBounds(f.Start, f.End, loc)
+		f.Month = ""
+		return f, err
+	}
 	_, _, err := monthBounds(f.Month, loc)
 	return f, err
 }
@@ -170,11 +189,53 @@ const sums = `COUNT(*), COALESCE(SUM(l.prompt_tokens),0), COALESCE(SUM(l.complet
 func (s *Store) report(ctx context.Context, f Filter, loc *time.Location, quota float64, currency string) (Report, error) {
 	r := Report{Month: f.Month, Timezone: loc.String(), Dimension: f.Dimension, Rows: []Row{}, Days: []Day{}, QuotaPerUnit: quota, Currency: currency, Generated: time.Now().UTC().Format(time.RFC3339)}
 	start, end, err := monthBounds(f.Month, loc)
+	if f.Mode == "range" {
+		start, end, err = dateBounds(f.Start, f.End, loc)
+	}
 	if err != nil {
 		return r, err
 	}
-	where := "l.type=2 AND l.created_at>=? AND l.created_at<?"
+	r.Mode = f.Mode
+	if r.Mode == "" {
+		r.Mode = "month"
+	}
+	r.Periods = append([]Period{}, f.Periods...)
+	r.Missing = append([]int64{}, f.Missing...)
+	base := "(l.created_at>=? AND l.created_at<?"
 	args := []any{start.Unix(), end.Unix()}
+	if len(f.Configured) > 0 {
+		base += " AND COALESCE(l." + s.channel + ",0) NOT IN ("
+		for i, id := range f.Configured {
+			if i > 0 {
+				base += ","
+			}
+			base += "?"
+			args = append(args, id)
+		}
+		base += ")"
+	}
+	base += ")"
+	for _, p := range f.Periods {
+		ps, pe, e := dateBounds(p.Start, p.End, loc)
+		if e != nil {
+			return r, e
+		}
+		base += " OR (l." + s.channel + "=? AND l.created_at>=? AND l.created_at<?)"
+		args = append(args, p.ChannelID, ps.Unix(), pe.Unix())
+		if f.Channel > 0 {
+			start, end = ps, pe
+		} else {
+			if ps.Before(start) {
+				start = ps
+			}
+			if pe.After(end) {
+				end = pe
+			}
+		}
+	}
+	r.Start = start.Format("2006-01-02")
+	r.End = end.AddDate(0, 0, -1).Format("2006-01-02")
+	where := "l.type=2 AND (" + base + ")"
 	for _, x := range []struct {
 		col string
 		id  int64
